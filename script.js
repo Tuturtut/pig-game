@@ -13,7 +13,7 @@ let state = {
   turnPoints: 0,
   target: 100,
   lastRoll: 1,
-  phase: "MENU",
+  phase: "PLAYING",
 };
 
 function rollDice(faces = 6) {
@@ -203,14 +203,6 @@ function render() {
         ? state.player[0].name
         : state.player[1].name;
     victory.textContent = `${winner} wins!`;
-  }
-
-  if (state.phase === "MENU") {
-    roll_btn.disabled = true;
-    hold_btn.disabled = true;
-    // Hide buttons
-    hold_btn.classList.add("hidden");
-    roll_btn.classList.add("hidden");
   }
 
   // Désactiver les boutons quand ce n'est pas au joueur humain de jouer
