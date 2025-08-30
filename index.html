@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pig Game</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  </head>
+  <body
+    class="bg-stone-950 flex flex-col gap-2 justify-center items-center h-screen text-white"
+  >
+    <img id="dice" class="w-20" src="assets/dice-1.svg" alt="" />
+
+    <div
+      class="*:px-4 *:py-2 *:cursor-pointer *:border *:border-white *:rounded"
+      id="buttons"
+    >
+      <button class="" id="roll_btn">Roll</button>
+      <button id="hold_btn">Hold</button>
+    </div>
+    <p class="" id="turn_points"></p>
+
+    <!-- lines between rows and columns -->
+    <div
+      class="grid grid-cols-2 grid-rows-2 gap-4 bg-stone-900 p-2 rounded *:rounded *:p-1"
+      id="total_scores"
+    >
+      <p id="player_1_name"></p>
+      <p id="player_2_name"></p>
+      <p id="player_1_score"></p>
+      <p id="player_2_score"></p>
+    </div>
+    <p id="victory"></p>
+
+    <button
+      id="new_game"
+      class="bg-stone-900 cursor-pointer p-2 rounded border border-white"
+    >
+      New Game
+    </button>
+
+    <script src="script.js"></script>
+  </body>
+</html>
