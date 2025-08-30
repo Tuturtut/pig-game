@@ -1,233 +1,258 @@
+// ------------------------------
+// Pig Game - Client (multijoueur + IA optionnelle)
+// ------------------------------
+
 let state = {
-  player: [
-    {
-      name: "Bernard",
-      score: 0,
-    },
-    {
-      name: "Computer",
-      score: 0,
-    },
+  players: [
+    { name: "Bernard", score: 0 },
+    { name: "Computer", score: 0 },
   ],
   current_turn: 0,
   turnPoints: 0,
-  target: 100,
+  target: 50,
   lastRoll: 1,
   phase: "PLAYING",
 };
 
-function rollDice(faces = 6) {
-  let dice = Math.floor(Math.random() * faces) + 1;
-  return dice;
-}
-
+// === UI ===
 const roll_btn = document.querySelector("#roll_btn");
 const hold_btn = document.querySelector("#hold_btn");
-const turn_points = document.querySelector("#turn_points");
+const turnEl = document.querySelector("#turn");
+const turnPointsEl = document.querySelector("#turn_points");
+const p1NameEl = document.querySelector("#player_1_name");
+const p2NameEl = document.querySelector("#player_2_name");
+const p1ScoreEl = document.querySelector("#player_1_score");
+const p2ScoreEl = document.querySelector("#player_2_score");
+const invite_btn = document.querySelector("#invite_btn");
+const statusEl = document.querySelector("#status");
+const diceImg = document.querySelector("#dice");
+const reset_btn = document.querySelector("#new_game");
+const victoryEl = document.querySelector("#victory");
 
-const player_1_score = document.querySelector("#player_1_score");
-const player_2_score = document.querySelector("#player_2_score");
+// === Params ===
+const params = new URLSearchParams(location.search);
+const roomId = params.get("room") || "test-room";
+const mySeat = Number(params.get("seat") ?? 0); // 0 ou 1
 
-const player_1_name = document.querySelector("#player_1_name");
-const player_2_name = document.querySelector("#player_2_name");
+// === Socket.IO (CDN requis dans index.html) ===
+let socket = null;
+try {
+  if (typeof io !== "undefined") {
+    const host = window.location.hostname || "127.0.0.1";
+    socket = io(`http://${host}:3000`);
 
-const dice_img = document.querySelector("#dice");
+    socket.on("connect", () => setStatus("Connecté au serveur ✓"));
+    socket.on("disconnect", () =>
+      setStatus("Déconnecté — mode local possible")
+    );
+    socket.on("connect_error", () =>
+      setStatus("⚠️ Impossible de joindre le serveur")
+    );
 
-const new_game_btn = document.querySelector("#new_game");
-const victory = document.querySelector("#victory");
+    socket.emit("join", { roomId, seat: mySeat });
 
-const A = {
-  ROLL: "ROLL",
-  HOLD: "HOLD",
-  RESET: "RESET",
-};
+    socket.on("state", (serverState) => {
+      state = serverState;
+      render();
+    });
 
-const HUMAN = 0;
-const COMPUTER = 1;
-
-let aiTimeoutId = null;
-
-function canAiWinThisTurn(s) {
-  const cur = s.current_turn;
-  return s.player[cur].score + s.turnPoints >= s.target;
+    socket.on("errorMsg", (msg) => {
+      console.warn("[server]", msg);
+      setStatus(`⚠️ ${msg}`);
+    });
+  } else {
+    console.warn("Socket.IO client non chargé (CDN manquant).");
+    setStatus("Mode local (pas de serveur).");
+  }
+} catch (e) {
+  console.warn("Échec connexion Socket.IO:", e);
+  setStatus("⚠️ Échec Socket.IO. Mode local uniquement.");
 }
 
-function isAiTurn(s) {
-  return s.current_turn === COMPUTER && s.phase === "PLAYING";
-}
-
-function computerTurn() {
-  if (!isAiTurn(state)) return;
-
-  if (canAiWinThisTurn(state)) {
-    dispatch({ type: A.HOLD });
+// === Envoi d'action ===
+function dispatchRemote(action) {
+  if (socket && socket.connected) {
+    socket.emit("action", action);
     return;
   }
-  const lead = state.player[COMPUTER].score - state.player[HUMAN].score;
-  const current_target = Math.max(10, Math.min(30, 16 - lead / 10));
-  console.log("current target", current_target);
-  if (state.turnPoints >= current_target) {
-    dispatch({ type: A.HOLD });
-    return;
-  }
-
-  dispatch({ type: A.ROLL });
+  // Fallback local (test solo)
+  state = reduceLocal(state, action);
+  render();
 }
 
-function scheduleComputerTurn() {
-  if (aiTimeoutId) {
-    clearTimeout(aiTimeoutId);
-    aiTimeoutId = null;
+// === Handlers ===
+roll_btn?.addEventListener("click", () => dispatchRemote({ type: "ROLL" }));
+hold_btn?.addEventListener("click", () => dispatchRemote({ type: "HOLD" }));
+reset_btn?.addEventListener("click", () => dispatchRemote({ type: "RESET" }));
+
+invite_btn?.addEventListener("click", async () => {
+  const url = new URL(location.href);
+  const room = roomId;
+  const otherSeat = mySeat === 0 ? 1 : 0;
+  url.searchParams.set("room", room);
+  url.searchParams.set("seat", otherSeat);
+  try {
+    await navigator.clipboard.writeText(url.toString());
+    setStatus("✅ Invite link copied!");
+  } catch {
+    setStatus(url.toString());
+  }
+});
+
+// === Render ===
+function render() {
+  if (p1NameEl) p1NameEl.textContent = state.players?.[0]?.name ?? "P1";
+  if (p2NameEl) p2NameEl.textContent = state.players?.[1]?.name ?? "P2";
+
+  if (p1ScoreEl) p1ScoreEl.textContent = state.players?.[0]?.score ?? 0;
+  if (p2ScoreEl) p2ScoreEl.textContent = state.players?.[1]?.score ?? 0;
+
+  if (turnEl) {
+    const who =
+      state.current_turn === 0
+        ? state.players?.[0]?.name
+        : state.players?.[1]?.name;
+    turnEl.textContent = who ?? "-";
+  }
+  if (turnPointsEl) turnPointsEl.textContent = state.turnPoints ?? 0;
+
+  if (diceImg) {
+    const face = state.lastRoll ?? 1;
+    diceImg.src = `assets/dice-${face}.svg`;
+    diceImg.alt = `Dice ${face}`;
   }
 
-  aiTimeoutId = setTimeout(() => {
-    aiTimeoutId = null;
-    computerTurn();
-  }, 1000);
+  // Couleurs joueur actif
+  if (p1NameEl && p2NameEl) {
+    const isP1 = state.current_turn === 0;
+    p1NameEl.classList.toggle("font-bold", isP1);
+    p1NameEl.classList.toggle("text-blue-600", isP1);
+    p1NameEl.classList.toggle("text-gray-800", !isP1);
+    p2NameEl.classList.toggle("font-bold", !isP1);
+    p2NameEl.classList.toggle("text-red-600", !isP1);
+    p2NameEl.classList.toggle("text-gray-800", isP1);
+  }
+
+  if (victoryEl) {
+    if (state.phase === "WIN") {
+      const winner = state.current_turn;
+      const name = state.players?.[winner]?.name ?? "Player";
+      victoryEl.textContent = `${name} wins! 🎉`;
+      victoryEl.classList.remove("hidden");
+    } else {
+      victoryEl.textContent = "";
+      victoryEl.classList.add("hidden");
+    }
+  }
+
+  const myTurn = state.phase === "PLAYING" && state.current_turn === mySeat;
+  const playing = state.phase === "PLAYING";
+  toggleBtn(roll_btn, myTurn && playing);
+  toggleBtn(hold_btn, myTurn && playing && (state.turnPoints ?? 0) > 0);
+
+  if (statusEl) {
+    if (state.phase === "LOBBY") setStatus("En attente d'un autre joueur…");
+    else if (state.phase === "PLAYING")
+      setStatus(myTurn ? "À toi de jouer !" : "L'adversaire joue…");
+    else if (state.phase === "WIN") setStatus("Partie terminée.");
+  }
+
+  if (ENABLE_CLIENT_AI && shouldAiPlayNow()) {
+    scheduleClientAiStep();
+  }
 }
 
-function reduce(state, action) {
-  if (state.phase !== "PLAYING" && action.type !== A.RESET) return state;
+function toggleBtn(btn, enabled) {
+  if (!btn) return;
+  btn.disabled = !enabled;
+  btn.classList.toggle("opacity-60", !enabled);
+  btn.classList.toggle("cursor-not-allowed", !enabled);
+}
+function setStatus(text) {
+  if (statusEl) statusEl.textContent = text ?? "";
+}
 
-  const other = state.current_turn === 0 ? 1 : 0;
-
+// === Reducer local (fallback) ===
+function rollDiceLocal() {
+  return Math.floor(Math.random() * 6) + 1;
+}
+function reduceLocal(s, action) {
+  const other = s.current_turn === 0 ? 1 : 0;
   switch (action.type) {
-    case A.RESET:
+    case "RESET":
       return {
-        ...state,
-        player: state.player.map((p) => ({
-          ...p,
-          score: 0,
-        })),
+        players: [
+          { name: "P1", score: 0 },
+          { name: "P2", score: 0 },
+        ],
         current_turn: 0,
         turnPoints: 0,
-        phase: "PLAYING",
+        target: 50,
         lastRoll: 1,
+        phase: "PLAYING",
       };
-    case A.ROLL: {
-      const roll = rollDice();
-
-      if (roll === 1) {
-        return {
-          ...state,
-          lastRoll: 1,
-          current_turn: other,
-          turnPoints: 0,
-        };
-      }
-
-      return {
-        ...state,
-        turnPoints: state.turnPoints + roll,
-        lastRoll: roll,
-      };
+    case "ROLL": {
+      if (s.phase !== "PLAYING") return s;
+      const roll = rollDiceLocal();
+      if (roll === 1)
+        return { ...s, lastRoll: 1, turnPoints: 0, current_turn: other };
+      return { ...s, lastRoll: roll, turnPoints: s.turnPoints + roll };
     }
-    case A.HOLD: {
-      const cur = state.current_turn;
-      const newScore = state.player[cur].score + state.turnPoints;
-      const withScore = {
-        ...state,
-        player: state.player.map((p, i) =>
-          i === cur ? { ...p, score: newScore } : p
-        ),
-        turnPoints: 0,
-      };
-      if (newScore >= state.target) return { ...withScore, phase: "WIN" };
-      return { ...withScore, current_turn: other };
+    case "HOLD": {
+      if (s.phase !== "PLAYING") return s;
+      const cur = s.current_turn;
+      const newScore = s.players[cur].score + s.turnPoints;
+      const updated = s.players.map((p, i) =>
+        i === cur ? { ...p, score: newScore } : p
+      );
+      if (newScore >= s.target)
+        return { ...s, players: updated, turnPoints: 0, phase: "WIN" };
+      return { ...s, players: updated, turnPoints: 0, current_turn: other };
     }
-    default: {
-      return state;
-    }
+    default:
+      return s;
   }
 }
 
-function dispatch(action) {
-  state = reduce(state, action);
-  render();
+// === IA locale optionnelle (OFF par défaut) ===
+const ENABLE_CLIENT_AI = false;
+const AI_SEAT = 1;
+let aiTimeoutId = null;
+
+function clientAiDecideAction(s) {
+  const me = AI_SEAT,
+    opp = 1 - me;
+  if (s.current_turn !== me || s.phase !== "PLAYING") return null;
+
+  const myScore = s.players[me].score;
+  const oppScore = s.players[opp].score;
+  const tp = s.turnPoints;
+
+  if (myScore + tp >= s.target) return "HOLD";
+  if (s.target - (myScore + tp) <= 6 && tp >= 6) return "HOLD";
+
+  const lead = myScore - oppScore;
+  let N = Math.round(16 - lead / 12);
+  N = Math.max(10, Math.min(22, N));
+  return tp >= N ? "HOLD" : "ROLL";
+}
+function shouldAiPlayNow() {
+  return (
+    ENABLE_CLIENT_AI &&
+    state.phase === "PLAYING" &&
+    state.current_turn === AI_SEAT &&
+    mySeat === AI_SEAT
+  );
+}
+function scheduleClientAiStep() {
+  if (aiTimeoutId) return;
+  aiTimeoutId = setTimeout(() => {
+    aiTimeoutId = null;
+    const decision = clientAiDecideAction(state);
+    if (!decision) return;
+    dispatchRemote({ type: decision });
+  }, 450);
 }
 
-roll_btn.addEventListener("click", () => {
-  dispatch({ type: A.ROLL });
-});
-
-hold_btn.addEventListener("click", () => {
-  dispatch({ type: A.HOLD });
-});
-
-function changeBtnColors(p1_color = "bg-sky-600", p2_color = "bg-red-600") {
-  if (state.current_turn === 0) {
-    roll_btn.classList.remove(p2_color);
-    roll_btn.classList.add(p1_color);
-    hold_btn.classList.remove(p2_color);
-    hold_btn.classList.add(p1_color);
-    player_1_name.classList.add(p1_color);
-    player_2_name.classList.remove(p2_color);
-  } else {
-    roll_btn.classList.remove(p1_color);
-    roll_btn.classList.add(p2_color);
-    hold_btn.classList.remove(p1_color);
-    hold_btn.classList.add(p2_color);
-    player_2_name.classList.add(p2_color);
-    player_1_name.classList.remove(p1_color);
-  }
-}
-
-function render() {
-  victory.textContent = "";
-
-  player_1_score.textContent = state.player[0].score;
-  player_2_score.textContent = state.player[1].score;
-  if (state.phase === "PLAYING") {
-    changeBtnColors();
-    turn_points.textContent = state.turnPoints;
-    player_1_name.textContent = state.player[0].name;
-    player_2_name.textContent = state.player[1].name;
-
-    roll_btn.disabled = false;
-    hold_btn.disabled = false;
-    // Show buttons
-    hold_btn.classList.remove("hidden");
-    roll_btn.classList.remove("hidden");
-  }
-
-  dice_img.src = `assets/dice-${state.lastRoll}.svg`;
-
-  if (state.phase === "WIN") {
-    roll_btn.disabled = true;
-    hold_btn.disabled = true;
-    // Hide buttons
-    hold_btn.classList.add("hidden");
-    roll_btn.classList.add("hidden");
-    let winner =
-      state.player[0].score >= state.target
-        ? state.player[0].name
-        : state.player[1].name;
-    victory.textContent = `${winner} wins!`;
-  }
-
-  // Désactiver les boutons quand ce n'est pas au joueur humain de jouer
-  roll_btn.disabled = state.phase !== "PLAYING" || state.current_turn !== HUMAN;
-  hold_btn.disabled =
-    state.phase !== "PLAYING" ||
-    state.current_turn !== HUMAN ||
-    state.turnPoints === 0;
-
-  // Si c'est au tour de l'IA, on programme son action
-  if (isAiTurn(state)) {
-    scheduleComputerTurn();
-  } else {
-    // Si c'est le tour du joueur, on s'assure qu'aucun timer IA ne traîne
-    if (aiTimeoutId) {
-      clearTimeout(aiTimeoutId);
-      aiTimeoutId = null;
-    }
-  }
-}
-
-window.onload = () => {
-  render();
-
-  new_game_btn.addEventListener("click", () => {
-    dispatch({ type: A.RESET });
-  });
-};
+// Premier rendu
+render();

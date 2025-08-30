@@ -9,6 +9,16 @@
   <body
     class="bg-stone-950 flex flex-col gap-2 justify-center items-center h-screen text-white"
   >
+    <div class="mt-2">
+      <button
+        id="invite_btn"
+        type="button"
+        class="cursor-pointer px-3 py-2 bg-emerald-600 hover:bg-emerald-700 rounded border border-white"
+      >
+        Copy invite link
+      </button>
+    </div>
+    <p id="status" class="mt-2 opacity-80"></p>
     <img id="dice" class="w-20" src="assets/dice-1.svg" alt="" />
 
     <div
@@ -39,6 +49,11 @@
     >
       New Game
     </button>
+
+    <script
+      src="https://cdn.socket.io/4.8.1/socket.io.min.js"
+      crossorigin="anonymous"
+    ></script>
 
     <script src="script.js"></script>
   </body>
