@@ -11,9 +11,9 @@ let state = {
   ],
   current_turn: 0,
   turnPoints: 0,
-  target: 10,
+  target: 100,
   lastRoll: 1,
-  phase: "PLAYING",
+  phase: "MENU",
 };
 
 function rollDice(faces = 6) {
@@ -42,6 +42,50 @@ const A = {
   RESET: "RESET",
 };
 
+const HUMAN = 0;
+const COMPUTER = 1;
+
+let aiTimeoutId = null;
+
+function canAiWinThisTurn(s) {
+  const cur = s.current_turn;
+  return s.player[cur].score + s.turnPoints >= s.target;
+}
+
+function isAiTurn(s) {
+  return s.current_turn === COMPUTER && s.phase === "PLAYING";
+}
+
+function computerTurn() {
+  if (!isAiTurn(state)) return;
+
+  if (canAiWinThisTurn(state)) {
+    dispatch({ type: A.HOLD });
+    return;
+  }
+  const lead = state.player[COMPUTER].score - state.player[HUMAN].score;
+  const current_target = Math.max(10, Math.min(30, 16 - lead / 10));
+  console.log("current target", current_target);
+  if (state.turnPoints >= current_target) {
+    dispatch({ type: A.HOLD });
+    return;
+  }
+
+  dispatch({ type: A.ROLL });
+}
+
+function scheduleComputerTurn() {
+  if (aiTimeoutId) {
+    clearTimeout(aiTimeoutId);
+    aiTimeoutId = null;
+  }
+
+  aiTimeoutId = setTimeout(() => {
+    aiTimeoutId = null;
+    computerTurn();
+  }, 1000);
+}
+
 function reduce(state, action) {
   if (state.phase !== "PLAYING" && action.type !== A.RESET) return state;
 
@@ -62,7 +106,6 @@ function reduce(state, action) {
       };
     case A.ROLL: {
       const roll = rollDice();
-      state.lastRoll = roll;
 
       if (roll === 1) {
         return {
@@ -76,6 +119,7 @@ function reduce(state, action) {
       return {
         ...state,
         turnPoints: state.turnPoints + roll,
+        lastRoll: roll,
       };
     }
     case A.HOLD: {
@@ -159,6 +203,32 @@ function render() {
         ? state.player[0].name
         : state.player[1].name;
     victory.textContent = `${winner} wins!`;
+  }
+
+  if (state.phase === "MENU") {
+    roll_btn.disabled = true;
+    hold_btn.disabled = true;
+    // Hide buttons
+    hold_btn.classList.add("hidden");
+    roll_btn.classList.add("hidden");
+  }
+
+  // Désactiver les boutons quand ce n'est pas au joueur humain de jouer
+  roll_btn.disabled = state.phase !== "PLAYING" || state.current_turn !== HUMAN;
+  hold_btn.disabled =
+    state.phase !== "PLAYING" ||
+    state.current_turn !== HUMAN ||
+    state.turnPoints === 0;
+
+  // Si c'est au tour de l'IA, on programme son action
+  if (isAiTurn(state)) {
+    scheduleComputerTurn();
+  } else {
+    // Si c'est le tour du joueur, on s'assure qu'aucun timer IA ne traîne
+    if (aiTimeoutId) {
+      clearTimeout(aiTimeoutId);
+      aiTimeoutId = null;
+    }
   }
 }
 
